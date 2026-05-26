@@ -32,8 +32,8 @@ PezzaliDashboard è una **dashboard personale**: gira col **tuo** token GitHub, 
 
 - 🔑 **Il vero controllo d'accesso è la GitHub API.** L'app mostra solo i dati che il tuo token può già leggere. Senza un tuo token nessuno vede i tuoi dati; con un tuo token quei dati sono leggibili anche senza questa app (è solo una vista più comoda degli stessi dati).
 - 📂 **Gran parte di ciò che vedi (repo pubblici, stelle, fork) è già pubblica** sul tuo profilo GitHub. La dashboard li aggrega, non li rende segreti.
-- 🔐 **Token cifrato a riposo:** il token viene cifrato con la tua passphrase (AES-GCM 256-bit + PBKDF2, 250.000 iterazioni) prima di essere salvato nel browser. Serve a proteggerlo **su questo dispositivo**: se qualcuno accede al tuo computer, non trova il token in chiaro.
-- 🔑 La **passphrase non viene mai salvata**: la conosci solo tu, la reinserisci a ogni accesso.
+- 💾 **Il token sta nel `localStorage` del browser, in chiaro**, senza cifratura aggiuntiva e senza passphrase. Una password nel browser proteggerebbe solo dal furto fisico del dispositivo (scenario poco realistico nella maggior parte dei setup), non dal rischio reale di chi apre l'URL con un proprio token: era *security theatre*, quindi è stata rimossa.
+- 🔑 **La sicurezza vera sono i permessi minimi del token:** usa un token fine-grained, sola lettura sui repo, con scadenza breve. Nel caso peggiore espone solo dati che quel token può già leggere, e lo revochi in un click da `github.com/settings/tokens`.
 - 🚫 **Nessun server intermedio**: l'app parla direttamente con `api.github.com`.
 - 🚫 **Nessun account, nessun tracking, nessuna analytics.**
 - ♻️ Lo storico snapshot (solo **numeri aggregati**) resta sul tuo dispositivo. I nomi dei repo non vengono mai salvati su disco.
@@ -48,23 +48,6 @@ Coerente con la filosofia di tutto l'ecosistema [PezzaliAPP](https://www.pezzali
 Non c'è niente da configurare per l'accesso: l'app gira con qualunque token GitHub valido tu inserisca e mostra i dati di quel token. Se vuoi, personalizza colori, logo e le categorie (costante `CATEGORIES` in `index.html`).
 
 Per renderla davvero "solo tua", vedi la nota sopra (**Privacy & modello di sicurezza**): tienila in locale o su GitHub Pages privato, e usa un token fine-grained con scope minimo.
-
-### Come funziona la passphrase
-
-**Primo accesso:**
-1. Inserisci il token GitHub
-2. Scegli una passphrase robusta (minimo 12 caratteri)
-3. L'app cifra il token con la passphrase e lo salva cifrato
-4. La passphrase NON viene salvata da nessuna parte
-
-**Accessi successivi:**
-1. L'app mostra solo il campo passphrase
-2. La inserisci → l'app decifra il token salvato → entri
-3. Se la passphrase è sbagliata → errore, non entri
-
-**Se dimentichi la passphrase:**
-- Clicca "Reimposta con un nuovo token" e ricominci da capo
-- Lo storico snapshot resta salvato
 
 ## Come si usa
 

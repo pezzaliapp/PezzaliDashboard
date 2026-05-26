@@ -2,7 +2,7 @@
 // Strategia: network-first per le pagine, cache-first per gli asset statici.
 // L'app fa chiamate live a api.github.com che NON devono essere cachate.
 
-const CACHE_NAME = 'pezzali-dashboard-v4';
+const CACHE_NAME = 'pezzali-dashboard-v5';
 const ASSETS = [
   './',
   './index.html',

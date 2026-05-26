@@ -1,3 +1,34 @@
+# CHANGES — v5: rimosso il teatro della passphrase
+
+Rimosso completamente il sistema di passphrase + cifratura del token introdotto in v4.
+
+## Motivazione (onesta)
+La passphrase **non** proteggeva dal rischio che preoccupava davvero — qualcuno che apre
+l'URL pubblico e usa un *proprio* token nel *proprio* browser. Proteggeva solo il furto
+fisico del Mac, scenario poco realistico in questo setup. Era *security theatre*: complessità
+e attrito (riscrivere una passphrase a ogni accesso) senza un guadagno reale di sicurezza.
+La sicurezza vera sta dove è sempre stata: nei **permessi minimi del token GitHub**.
+
+## Cosa è cambiato
+- **`index.html`**
+  - Tolto il campo passphrase dal form di login.
+  - Rimosso l'intero blocco CRYPTO: `deriveKey`, `encryptToken`, `decryptToken`, `b64encode`, `b64decode`.
+  - `STORAGE`: da `pd_token_enc` / `pd_token_salt` / `pd_token_iv` a una sola chiave `pd_token` (token in chiaro). Rimosso anche `pd_repos_cache` (era inutilizzato).
+  - `login()` semplificata: chiede solo il token, lo valida con `fetchUser()`, lo salva.
+  - **Ripristinato l'auto-login** in `init()`: se c'è un token salvato lo rivalida e, se valido, entra dritto in dashboard; se 401 pulisce e mostra il login.
+  - `logout()`: rimuove `pd_token` + `pd_user`.
+  - Rimosse le funzioni ormai orfane `clearAll`, `updateLoginUI`, `resetTokenStored`.
+  - `security-strip`: testo onesto — token in `localStorage` in chiaro, niente cifratura, la sicurezza è nei permessi minimi del token.
+- **`sw.js`**: `CACHE_NAME` → `pezzali-dashboard-v5`.
+- **`README.md`**: tolta la sezione "Come funziona la passphrase", riscritti i bullet privacy/sicurezza.
+
+## Verifiche
+- ✅ `node --check` sul JS estratto → sintassi OK.
+- ✅ Nessun residuo di `passphrase` / `encrypt` / `decrypt` / `TOKEN_ENC` nel codice.
+- ✅ Nessun codice morto: tutte le funzioni rimaste sono referenziate.
+
+---
+
 # CHANGES — Hardening v3 → v4 (Opzione A)
 
 Modifiche applicate dopo l'analisi di sicurezza (vedi `ANALISI.md`).
