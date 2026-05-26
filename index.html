@@ -16,7 +16,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 
 <style>
 :root{
@@ -410,17 +410,27 @@ input,select,textarea{font-family:inherit;color:inherit}
     <div id="tab-access" class="tab-pane active">
       <div class="field">
         <label for="tokenInput">GitHub Personal Access Token</label>
-        <input type="password" id="tokenInput" placeholder="ghp_..." autocomplete="off">
+        <input type="password" id="tokenInput" placeholder="github_pat_... oppure ghp_..." autocomplete="off">
         <div class="field-hint">
-          Token classico o fine-grained, con permessi minimi: <code>public_repo</code> (per repo pubblici) e
-          <code>read:user</code>. <a href="#" onclick="toggleHelp(event)">Come si crea?</a>
+          Token Fine-grained con permessi minimi (solo lettura repo pubblici).
+          <a href="#" onclick="toggleHelp(event)">Come si crea?</a>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="passphraseInput">🔐 Passphrase personale</label>
+        <input type="password" id="passphraseInput" placeholder="Una password lunga, che tieni solo nella tua testa" autocomplete="off">
+        <div class="field-hint">
+          Cifra il tuo token <strong>prima</strong> di salvarlo nel browser. Al primo accesso la imposti,
+          ai successivi la riscrivi per sbloccare. Serve a proteggere il token <strong>su questo dispositivo</strong>:
+          se qualcuno accede al tuo computer, non trova il token in chiaro. Tienila lunga (12+ caratteri).
         </div>
       </div>
 
       <div id="helpBox" class="help-box" style="display:none">
         <strong>Come creare un Personal Access Token:</strong>
         <ol style="margin-top:8px">
-          <li>Vai su <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></li>
+          <li>Vai su <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">github.com/settings/tokens</a></li>
           <li>Clicca <code>Generate new token</code> → <code>Classic</code></li>
           <li>Note: <code>PezzaliDashboard</code> · Scadenza: a tua scelta</li>
           <li>Spunta: <code>public_repo</code>, <code>read:user</code>, <code>read:org</code></li>
@@ -436,9 +446,10 @@ input,select,textarea{font-family:inherit;color:inherit}
       <div class="security-strip">
         <span class="ic">🛡️</span>
         <span>
-          Il token viene salvato <strong>solo in localStorage del tuo browser</strong>, non lascia mai il tuo
-          dispositivo. Nessun server di terze parti, nessun tracking, nessun account. Puoi revocarlo in qualsiasi
-          momento da GitHub.
+          <strong>Token cifrato sul dispositivo:</strong> il token GitHub viene cifrato con la tua
+          passphrase (AES-GCM) prima di essere salvato nel browser. Così chi accede a questo dispositivo
+          non lo trova in chiaro. La passphrase <strong>non viene mai salvata</strong>: la conosci solo tu.
+          Se la dimentichi, devi reimpostarla cancellando i dati locali.
         </span>
       </div>
     </div>
@@ -453,13 +464,13 @@ input,select,textarea{font-family:inherit;color:inherit}
           e diventa la tua personale console di GitHub analytics.
         </p>
         <div class="discover-actions">
-          <a class="btn" href="https://github.com/pezzaliapp/PezzaliDashboard" target="_blank">
+          <a class="btn" href="https://github.com/pezzaliapp/PezzaliDashboard" target="_blank" rel="noopener noreferrer">
             ⭐ Repo GitHub
           </a>
-          <a class="btn" href="https://www.pezzaliapp.com" target="_blank">
+          <a class="btn" href="https://www.pezzaliapp.com" target="_blank" rel="noopener noreferrer">
             🏠 pezzaliapp.com
           </a>
-          <a class="btn" href="https://pezzalihub.app" target="_blank">
+          <a class="btn" href="https://pezzalihub.app" target="_blank" rel="noopener noreferrer">
             📱 pezzalihub.app
           </a>
         </div>
@@ -601,19 +612,68 @@ input,select,textarea{font-family:inherit;color:inherit}
 // STATE
 // ============================================================================
 const STORAGE = {
-  TOKEN: 'pd_token',
+  TOKEN_ENC: 'pd_token_enc',      // token cifrato con passphrase (base64)
+  TOKEN_SALT: 'pd_token_salt',    // salt random per derivazione chiave (base64)
+  TOKEN_IV: 'pd_token_iv',        // IV per AES-GCM (base64)
   USER: 'pd_user',
   SNAPSHOTS: 'pd_snapshots',
   REPOS_CACHE: 'pd_repos_cache',
 };
 
 let state = {
-  token: localStorage.getItem(STORAGE.TOKEN) || null,
+  token: null,         // in memoria solo, mai persistito in chiaro
   user: null,
   repos: [],
   snapshots: JSON.parse(localStorage.getItem(STORAGE.SNAPSHOTS) || '[]'),
   trendChart: null,
 };
+
+// ============================================================================
+// CRYPTO — derivazione chiave da passphrase + AES-GCM
+// ============================================================================
+function b64encode(buf){
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function b64decode(str){
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
+async function deriveKey(passphrase, salt){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    'raw', enc.encode(passphrase),
+    {name:'PBKDF2'}, false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt: salt, iterations: 250000, hash:'SHA-256'},
+    baseKey,
+    {name:'AES-GCM', length: 256},
+    false,
+    ['encrypt','decrypt']
+  );
+}
+
+async function encryptToken(token, passphrase){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(passphrase, salt);
+  const enc  = new TextEncoder();
+  const ct   = await crypto.subtle.encrypt(
+    {name:'AES-GCM', iv: iv}, key, enc.encode(token)
+  );
+  return { ct: b64encode(ct), salt: b64encode(salt), iv: b64encode(iv) };
+}
+
+async function decryptToken(ctB64, saltB64, ivB64, passphrase){
+  const salt = b64decode(saltB64);
+  const iv   = b64decode(ivB64);
+  const ct   = b64decode(ctB64);
+  const key  = await deriveKey(passphrase, salt);
+  const pt   = await crypto.subtle.decrypt(
+    {name:'AES-GCM', iv: iv}, key, ct
+  );
+  return new TextDecoder().decode(pt);
+}
 
 // ============================================================================
 // CATEGORIES — euristica per parola chiave
@@ -639,6 +699,14 @@ function categorize(repo){
 // ============================================================================
 // UI HELPERS
 // ============================================================================
+// Escape HTML: i dati GitHub (nomi/description repo, url) finiscono in innerHTML.
+// Senza questo, un repo con nome/description tipo <img src=x onerror=...> eseguirebbe
+// codice nello stesso origin del token. Difesa in profondità: usala su OGNI dato esterno.
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function toast(msg){
   const host = document.getElementById('toastHost');
   const el = document.createElement('div');
@@ -715,26 +783,82 @@ async function fetchAllRepos(){
 // ============================================================================
 async function login(){
   const tokenInput = document.getElementById('tokenInput');
+  const passInput = document.getElementById('passphraseInput');
   const token = tokenInput.value.trim();
+  const passphrase = passInput.value;
+
+  const hasStoredToken = !!localStorage.getItem(STORAGE.TOKEN_ENC);
+
+  if(!passphrase || passphrase.length < 12){
+    toast('La passphrase deve essere di almeno 12 caratteri');
+    return;
+  }
+
+  const btn = event.target;
+  btn.disabled = true;
+
+  // CASO A: Già esiste un token cifrato → si sblocca con la passphrase
+  if(hasStoredToken && !token){
+    btn.textContent = '🔓 Sblocco…';
+    try {
+      const ct   = localStorage.getItem(STORAGE.TOKEN_ENC);
+      const salt = localStorage.getItem(STORAGE.TOKEN_SALT);
+      const iv   = localStorage.getItem(STORAGE.TOKEN_IV);
+      const decrypted = await decryptToken(ct, salt, iv, passphrase);
+      state.token = decrypted;
+      const user = await fetchUser();
+      localStorage.setItem(STORAGE.USER, JSON.stringify(user));
+      state.user = user;
+      tokenInput.value = '';
+      passInput.value = '';
+      toast('Sbloccato. Benvenuto, ' + (user.login || user.name));
+      await enterDashboard();
+    } catch(err){
+      state.token = null;
+      // OperationError = passphrase sbagliata
+      if(err.name === 'OperationError'){
+        toast('❌ Passphrase errata');
+      } else {
+        toast(err.message || 'Errore di sblocco');
+      }
+      btn.disabled = false;
+      btn.textContent = '🚀 Accedi al dashboard';
+    }
+    return;
+  }
+
+  // CASO B: Primo accesso (o reset) → serve token + passphrase
   if(!token){
-    toast('Inserisci un token');
+    toast('Inserisci il token GitHub');
+    btn.disabled = false;
+    btn.textContent = '🚀 Accedi al dashboard';
     return;
   }
   if(!token.startsWith('ghp_') && !token.startsWith('github_pat_')){
-    if(!confirm('Il token non sembra avere il formato standard di GitHub. Vuoi provare comunque?')) return;
+    if(!confirm('Il token non sembra avere il formato standard di GitHub. Vuoi provare comunque?')){
+      btn.disabled = false;
+      btn.textContent = '🚀 Accedi al dashboard';
+      return;
+    }
   }
 
+  btn.textContent = '🔄 Verifico token e accesso…';
   state.token = token;
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = '🔄 Verifico…';
 
   try {
+    // 1. Valida il token con GitHub (login deve restituire un utente valido)
     const user = await fetchUser();
-    localStorage.setItem(STORAGE.TOKEN, token);
+
+    // 2. Cifra e salva il token in localStorage
+    const enc = await encryptToken(token, passphrase);
+    localStorage.setItem(STORAGE.TOKEN_ENC, enc.ct);
+    localStorage.setItem(STORAGE.TOKEN_SALT, enc.salt);
+    localStorage.setItem(STORAGE.TOKEN_IV, enc.iv);
     localStorage.setItem(STORAGE.USER, JSON.stringify(user));
+
     state.user = user;
     tokenInput.value = '';
+    passInput.value = '';
     toast('Benvenuto, ' + (user.login || user.name) + ' 🎉');
     await enterDashboard();
   } catch(err){
@@ -746,24 +870,65 @@ async function login(){
 }
 
 function logout(){
-  if(!confirm('Sei sicuro di voler uscire? Lo storico snapshot verrà mantenuto.')) return;
-  localStorage.removeItem(STORAGE.TOKEN);
-  localStorage.removeItem(STORAGE.USER);
+  if(!confirm('Uscire? Il token cifrato resta salvato — al prossimo accesso ti basterà reinserire la passphrase. Lo storico snapshot viene mantenuto.')) return;
+  // Mantengo TOKEN_ENC/SALT/IV: bastano per riloggare con passphrase
   state.token = null;
   state.user = null;
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'grid';
+  // Mostra solo il campo passphrase, nascondi token
+  updateLoginUI();
   renderHeaderActions();
   toast('Uscito');
 }
 
 function clearAll(){
-  if(!confirm('⚠️ Vuoi cancellare TUTTI i dati locali (token + snapshot)? L\'azione è irreversibile.')) return;
-  localStorage.removeItem(STORAGE.TOKEN);
+  if(!confirm('⚠️ Vuoi cancellare TUTTI i dati locali (token cifrato + snapshot)? Dovrai reinserire token + passphrase. L\'azione è irreversibile.')) return;
+  localStorage.removeItem(STORAGE.TOKEN_ENC);
+  localStorage.removeItem(STORAGE.TOKEN_SALT);
+  localStorage.removeItem(STORAGE.TOKEN_IV);
   localStorage.removeItem(STORAGE.USER);
   localStorage.removeItem(STORAGE.SNAPSHOTS);
   localStorage.removeItem(STORAGE.REPOS_CACHE);
   location.reload();
+}
+
+// Mostra/nascondi il campo token a seconda che esista già un token cifrato
+function updateLoginUI(){
+  const hasStored = !!localStorage.getItem(STORAGE.TOKEN_ENC);
+  const tokenField = document.getElementById('tokenInput').closest('.field');
+  const helpBox = document.getElementById('helpBox');
+  const btn = document.querySelector('#tab-access .btn-primary');
+  if(hasStored){
+    if(tokenField) tokenField.style.display = 'none';
+    if(helpBox) helpBox.style.display = 'none';
+    if(btn) btn.textContent = '🔓 Sblocca dashboard';
+    // Hint che dice "rientra con passphrase"
+    let resetLink = document.getElementById('resetLink');
+    if(!resetLink){
+      resetLink = document.createElement('div');
+      resetLink.id = 'resetLink';
+      resetLink.style.cssText = 'text-align:center;margin-top:14px;font-size:12px;color:var(--soft)';
+      resetLink.innerHTML = '🔄 <a href="#" onclick="resetTokenStored(event)">Reimposta con un nuovo token</a>';
+      document.querySelector('.security-strip').after(resetLink);
+    }
+  } else {
+    if(tokenField) tokenField.style.display = 'block';
+    if(btn) btn.textContent = '🚀 Accedi al dashboard';
+    const resetLink = document.getElementById('resetLink');
+    if(resetLink) resetLink.remove();
+  }
+}
+
+function resetTokenStored(e){
+  e.preventDefault();
+  if(!confirm('Vuoi reimpostare il token? Cancellerai il token cifrato e dovrai inserirne uno nuovo (lo storico snapshot rimane).')) return;
+  localStorage.removeItem(STORAGE.TOKEN_ENC);
+  localStorage.removeItem(STORAGE.TOKEN_SALT);
+  localStorage.removeItem(STORAGE.TOKEN_IV);
+  localStorage.removeItem(STORAGE.USER);
+  updateLoginUI();
+  toast('Token cancellato. Inserisci un nuovo token + passphrase.');
 }
 
 // ============================================================================
@@ -827,11 +992,11 @@ function renderHeaderActions(){
   const host = document.getElementById('headerActions');
   if(state.token && state.user){
     host.innerHTML = `
-      <a class="btn btn-ghost" href="https://github.com/${state.user.login}" target="_blank">@${state.user.login} ↗</a>
+      <a class="btn btn-ghost" href="https://github.com/${esc(state.user.login)}" target="_blank" rel="noopener noreferrer">@${esc(state.user.login)} ↗</a>
       <button class="btn btn-danger" onclick="logout()">Esci</button>
     `;
   } else {
-    host.innerHTML = `<a class="btn btn-ghost" href="https://github.com/pezzaliapp/PezzaliDashboard" target="_blank">⭐ Repo</a>`;
+    host.innerHTML = `<a class="btn btn-ghost" href="https://github.com/pezzaliapp/PezzaliDashboard" target="_blank" rel="noopener noreferrer">⭐ Repo</a>`;
   }
 }
 
@@ -946,7 +1111,7 @@ function renderTopLists(){
     <div class="repo-row">
       <div class="left">
         <span class="rank">#${i+1}</span>
-        <span class="name"><a href="${r.html_url}" target="_blank">${r.name}</a></span>
+        <span class="name"><a href="${esc(r.html_url)}" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a></span>
       </div>
       <span class="right">⭐ ${r.stargazers_count}</span>
     </div>
@@ -956,7 +1121,7 @@ function renderTopLists(){
     <div class="repo-row">
       <div class="left">
         <span class="rank">#${i+1}</span>
-        <span class="name"><a href="${r.html_url}" target="_blank">${r.name}</a></span>
+        <span class="name"><a href="${esc(r.html_url)}" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a></span>
       </div>
       <span class="right">🍴 ${r.forks_count}</span>
     </div>
@@ -1007,7 +1172,7 @@ function renderAlerts(){
     alerts.push({
       type:'up',
       ic:'🌟',
-      text:`<strong>${r.name}</strong> ha ⭐ ${r.stargazers_count} e attività recente. Considera di metterlo in pinned.`
+      text:`<strong>${esc(r.name)}</strong> ha ⭐ ${r.stargazers_count} e attività recente. Considera di metterlo in pinned.`
     });
   });
 
@@ -1109,12 +1274,12 @@ function renderTable(){
       ${list.map(r => `
         <tr>
           <td class="repo-name">
-            <a href="${r.html_url}" target="_blank">${r.name}</a>
+            <a href="${esc(r.html_url)}" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a>
             ${r.archived ? '<span class="pill" style="margin-left:6px">archived</span>' : ''}
             ${r.private ? '<span class="pill" style="margin-left:6px">private</span>' : ''}
-            ${r.description ? `<div style="color:var(--muted);font-size:12px;margin-top:2px">${r.description.substring(0,90)}${r.description.length>90?'…':''}</div>` : ''}
+            ${r.description ? `<div style="color:var(--muted);font-size:12px;margin-top:2px">${esc(r.description.substring(0,90))}${r.description.length>90?'…':''}</div>` : ''}
           </td>
-          <td class="num dim" style="text-align:left">${r.language || '—'}</td>
+          <td class="num dim" style="text-align:left">${esc(r.language || '—')}</td>
           <td class="num ${r.stargazers_count > 0 ? 'accent' : 'dim'}">${r.stargazers_count}</td>
           <td class="num ${r.forks_count > 0 ? 'accent' : 'dim'}">${r.forks_count}</td>
           <td class="num dim">${r.watchers_count}</td>
@@ -1131,18 +1296,8 @@ function renderTable(){
 // ============================================================================
 async function init(){
   renderHeaderActions();
-  if(state.token){
-    try {
-      state.user = JSON.parse(localStorage.getItem(STORAGE.USER) || 'null');
-      if(!state.user) state.user = await fetchUser();
-      await enterDashboard();
-    } catch(err){
-      // token non valido, mostra login
-      localStorage.removeItem(STORAGE.TOKEN);
-      state.token = null;
-      toast('Token non valido, reinserisci');
-    }
-  }
+  // Nessun auto-login: serve sempre la passphrase per sbloccare
+  updateLoginUI();
 }
 
 // Service Worker

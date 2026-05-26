@@ -26,15 +26,45 @@ PezzaliDashboard risolve questo: una vista unica, in tempo reale, con storico, c
 - 📋 **Tabella completa** — Tutti i tuoi repo, filtrabili e ordinabili
 - 📱 **PWA installabile** — Aggiungi a Home su iPhone/Android, oppure installa come app desktop
 
-## Privacy by design
+## Privacy & modello di sicurezza
 
-- 🔐 Il token GitHub vive **solo in localStorage** del tuo browser
-- 🚫 **Nessun server intermedio**: l'app parla direttamente con `api.github.com`
-- 🚫 **Nessun account, nessun tracking, nessuna analytics**
-- ♻️ Lo storico snapshot è solo sul tuo dispositivo
-- 🗑️ Puoi cancellare tutto in qualunque momento (logout + clear storage)
+PezzaliDashboard è una **dashboard personale**: gira col **tuo** token GitHub, nel **tuo** browser, sul **tuo** dispositivo. Detto onestamente, ecco cosa protegge e cosa no:
+
+- 🔑 **Il vero controllo d'accesso è la GitHub API.** L'app mostra solo i dati che il tuo token può già leggere. Senza un tuo token nessuno vede i tuoi dati; con un tuo token quei dati sono leggibili anche senza questa app (è solo una vista più comoda degli stessi dati).
+- 📂 **Gran parte di ciò che vedi (repo pubblici, stelle, fork) è già pubblica** sul tuo profilo GitHub. La dashboard li aggrega, non li rende segreti.
+- 🔐 **Token cifrato a riposo:** il token viene cifrato con la tua passphrase (AES-GCM 256-bit + PBKDF2, 250.000 iterazioni) prima di essere salvato nel browser. Serve a proteggerlo **su questo dispositivo**: se qualcuno accede al tuo computer, non trova il token in chiaro.
+- 🔑 La **passphrase non viene mai salvata**: la conosci solo tu, la reinserisci a ogni accesso.
+- 🚫 **Nessun server intermedio**: l'app parla direttamente con `api.github.com`.
+- 🚫 **Nessun account, nessun tracking, nessuna analytics.**
+- ♻️ Lo storico snapshot (solo **numeri aggregati**) resta sul tuo dispositivo. I nomi dei repo non vengono mai salvati su disco.
+- 🗑️ Puoi cancellare tutto in qualunque momento (logout + clear storage).
+
+> **Vuoi la certezza che sia accessibile solo a te?** Il modo più solido non è un controllo nel browser (sarebbe aggirabile): è **non esporre un URL pubblico**. Aprila in locale (da disco o `localhost`), oppure mettila su un GitHub Pages **privato** (richiede GitHub Pro, mette la pagina dietro il login GitHub). E soprattutto: usa **token fine-grained** con scope minimo e scadenza breve, mai Classic PAT ad ampio raggio.
 
 Coerente con la filosofia di tutto l'ecosistema [PezzaliAPP](https://www.pezzaliapp.com): i tuoi dati restano tuoi.
+
+### Come usarla per te (se fai fork)
+
+Non c'è niente da configurare per l'accesso: l'app gira con qualunque token GitHub valido tu inserisca e mostra i dati di quel token. Se vuoi, personalizza colori, logo e le categorie (costante `CATEGORIES` in `index.html`).
+
+Per renderla davvero "solo tua", vedi la nota sopra (**Privacy & modello di sicurezza**): tienila in locale o su GitHub Pages privato, e usa un token fine-grained con scope minimo.
+
+### Come funziona la passphrase
+
+**Primo accesso:**
+1. Inserisci il token GitHub
+2. Scegli una passphrase robusta (minimo 12 caratteri)
+3. L'app cifra il token con la passphrase e lo salva cifrato
+4. La passphrase NON viene salvata da nessuna parte
+
+**Accessi successivi:**
+1. L'app mostra solo il campo passphrase
+2. La inserisci → l'app decifra il token salvato → entri
+3. Se la passphrase è sbagliata → errore, non entri
+
+**Se dimentichi la passphrase:**
+- Clicca "Reimposta con un nuovo token" e ricominci da capo
+- Lo storico snapshot resta salvato
 
 ## Come si usa
 
