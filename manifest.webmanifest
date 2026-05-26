@@ -1,0 +1,27 @@
+{
+  "name": "PezzaliDashboard — GitHub Analytics Privato",
+  "short_name": "PezzaliDashboard",
+  "description": "Dashboard analitica per il tuo profilo GitHub. Token locale, dati che non escono dal browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "lang": "it",
+  "categories": ["productivity", "utilities", "developer"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
